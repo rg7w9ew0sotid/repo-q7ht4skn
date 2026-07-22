@@ -6,8 +6,9 @@ from __future__ import annotations
 import argparse
 from collections import deque
 from pathlib import Path
+from statistics import median
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 SHEETS = {
@@ -31,13 +32,23 @@ def color_distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
 
 
 def remove_connected_background(image: Image.Image, tolerance: float = 33.0) -> Image.Image:
-    """Remove the sheet's beige background, preserving enclosed artwork areas."""
+    """Remove connected near-beige/near-white background, preserving artwork."""
     rgba = image.convert("RGBA")
     pixels = rgba.load()
     width, height = rgba.size
     sample_points = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
-    key = tuple(sum(rgba.getpixel(p)[channel] for p in sample_points) // len(sample_points)
+    # A foreground element can touch one of the four corners. Median is robust
+    # to that outlier; averaging it would shift the key and miss the whole bg.
+    key = tuple(int(median(rgba.getpixel(p)[channel] for p in sample_points))
                 for channel in range(3))
+
+    def is_background(pixel: tuple[int, int, int, int]) -> bool:
+        rgb = pixel[:3]
+        spread = max(rgb) - min(rgb)
+        return color_distance(rgb, key) <= tolerance or (
+            min(rgb) >= 200 and spread <= 70
+        )
+
     seen: set[tuple[int, int]] = set()
     queue: deque[tuple[int, int]] = deque()
 
@@ -54,7 +65,7 @@ def remove_connected_background(image: Image.Image, tolerance: float = 33.0) -> 
             continue
         seen.add((x, y))
         pixel = pixels[x, y]
-        if color_distance(pixel[:3], key) > tolerance:
+        if not is_background(pixel):
             continue
         pixels[x, y] = (pixel[0], pixel[1], pixel[2], 0)
         if x:
@@ -92,16 +103,17 @@ def slice_sheet(source: Path, output_root: Path, tolerance: float) -> list[Path]
         top = max(0, bbox[1] - 1)
         right = min(cell_width, bbox[2] + 1)
         bottom = min(cell_height, bbox[3] + 1)
-        output = transparent.crop((left, top, right, bottom))
+        # Keep a transparent antialiasing margin even when artwork touches a
+        # source-cell edge, guaranteeing transparent output corners.
+        output = ImageOps.expand(
+            transparent.crop((left, top, right, bottom)),
+            border=1,
+            fill=(0, 0, 0, 0),
+        )
         destination = output_dir / f"{name}.png"
         output.save(destination, "PNG", optimize=True)
         written.append(destination)
     return written
-
-
-def crop_background(source: Path, destination: Path, box: tuple[int, int, int, int]) -> None:
-    image = Image.open(source).convert("RGB")
-    image.crop(box).save(destination, "PNG", optimize=True)
 
 
 def main() -> None:
@@ -115,11 +127,10 @@ def main() -> None:
         paths = slice_sheet(args.art / filename, args.output, args.tolerance)
         print(f"{filename}: {len(paths)} sprites")
 
-    concept = args.art / "concept_screen.png"
-    # Concept is 1024x1536: upper wooden table and lower side-view battle scene.
-    crop_background(concept, args.output / "bg_board.png", (42, 118, 982, 785))
-    crop_background(concept, args.output / "bg_battle.png", (30, 844, 994, 1488))
-    print("backgrounds: bg_board.png, bg_battle.png")
+    # Backgrounds (bg_board.png / bg_battle.png) are hand-authored empty scenes
+    # that live in assets/. Do NOT regenerate them from the concept mockup here:
+    # that image has baked-in cards/units/enemies and would clobber the clean
+    # runtime backgrounds.
 
 
 if __name__ == "__main__":
