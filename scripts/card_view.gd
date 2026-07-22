@@ -13,8 +13,10 @@ var shadow: Panel
 func setup(id: String, texture: Texture2D, tint: Color) -> void:
 	card_id = id
 	card_name = GameData.CARDS[id].name
-	custom_minimum_size = Vector2(138, 166)
-	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	size = Vector2(138, 166)
+	custom_minimum_size = size
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_default_cursor_shape = Control.CURSOR_ARROW
 	shadow = Panel.new()
 	shadow.position = Vector2(4, 7)
 	shadow.size = Vector2(138, 166)
@@ -62,12 +64,8 @@ func setup(id: String, texture: Texture2D, tint: Color) -> void:
 func set_locked(value: bool) -> void:
 	locked = value
 	modulate = Color(0.58, 0.58, 0.58, 1) if locked else Color.WHITE
-	mouse_default_cursor_shape = Control.CURSOR_ARROW if locked else Control.CURSOR_POINTING_HAND
+	mouse_default_cursor_shape = Control.CURSOR_ARROW
 
 func _gui_input(event: InputEvent) -> void:
-	if locked or claimed:
-		return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		claimed = true
-		clicked.emit(self)
-		accept_event()
+	# CardLayer handles hit testing so visual state and input geometry stay identical.
+	pass

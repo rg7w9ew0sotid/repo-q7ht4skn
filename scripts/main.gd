@@ -115,6 +115,8 @@ func _build_board() -> void:
 	card_layer.position = Vector2(26, 80)
 	card_layer.size = Vector2(596, 526)
 	card_layer.clip_contents = false
+	card_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	card_layer.gui_input.connect(_on_card_layer_input)
 	board.add_child(card_layer)
 
 func _build_tray() -> void:
@@ -236,23 +238,46 @@ func _refresh_covered() -> void:
 	for card in deck_cards:
 		if not is_instance_valid(card):
 			continue
-		var covered := false
-		for other in deck_cards:
-			if other == card or not is_instance_valid(other) or other.z_index <= card.z_index:
-				continue
-			if _cards_overlap(card, other):
-				covered = true
-				break
-		card.set_locked(covered)
+		card.set_locked(not _card_has_exposed_area(card))
 
-func _cards_overlap(first: Control, second: Control) -> bool:
-	var a := Rect2(first.global_position + Vector2(8, 8), CARD_SIZE - Vector2(16, 16))
-	var b := Rect2(second.global_position + Vector2(8, 8), CARD_SIZE - Vector2(16, 16))
-	return a.intersects(b)
+func _on_card_layer_input(event: InputEvent) -> void:
+	if not event is InputEventMouseButton:
+		return
+	if event.button_index != MOUSE_BUTTON_LEFT or not event.pressed:
+		return
+	var canvas_point: Vector2 = card_layer.get_global_transform_with_canvas() * event.position
+	var card := _top_card_at(canvas_point)
+	if card != null and not card.locked:
+		_on_card_clicked(card)
+		card_layer.accept_event()
+
+func _top_card_at(canvas_point: Vector2) -> CardView:
+	var result: CardView
+	var highest_z := -2147483648
+	for card in deck_cards:
+		if not is_instance_valid(card) or card.claimed:
+			continue
+		var card_point: Vector2 = card.get_global_transform_with_canvas().affine_inverse() * canvas_point
+		if Rect2(Vector2.ZERO, CARD_SIZE).has_point(card_point) and card.z_index > highest_z:
+			result = card
+			highest_z = card.z_index
+	return result
+
+func _card_has_exposed_area(card: CardView) -> bool:
+	# Sample the exact transformed rectangle with the same hit test used by clicks.
+	# A 3px grid catches the visible edge slivers created by rotated cards.
+	for y in range(1, int(CARD_SIZE.y), 3):
+		for x in range(1, int(CARD_SIZE.x), 3):
+			var local_point := Vector2(x, y)
+			var canvas_point: Vector2 = card.get_global_transform_with_canvas() * local_point
+			if _top_card_at(canvas_point) == card:
+				return true
+	return false
 
 func _on_card_clicked(card: CardView) -> void:
-	if card.locked:
+	if card.locked or card.claimed:
 		return
+	card.claimed = true
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	deck_cards.erase(card)
 	_refresh_covered()
