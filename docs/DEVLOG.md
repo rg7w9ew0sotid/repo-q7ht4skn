@@ -19,3 +19,12 @@
 - 新增多时代 GDD，记录核心循环、职业矩阵、公式、塔规则、动画约定和 Godot 节点结构。
 - 约定每个里程碑单独提交并推送到 `origin main`。
 - 验证重点：`godot --headless --import`、`--check-only`、主场景加载及 DISPLAY 实机回归。
+
+## 2026-07-23：多时代 MVP 实现与回归
+
+- `GameData` 改为从 `heroes.json` 初始化 25 名英雄、5 个时代、5 个职业和卡牌映射。
+- 主流程改为当前时代牌池，三张同名卡合成 manifest 英雄；升级后保留旧卡并把新时代卡放入牌堆底部。
+- 战场加入己方塔、敌方塔、塔血条、镜像英雄波次、击杀积分和时代进阶提示。
+- `BattleUnit` 按 `hero.anim` 复用帧动画并按职业倍率调整体型；缺少美术时回退为静态贴图或纯色英雄名占位。
+- 通过 `godot --headless --path . --import`、`--check-only` 和主场景运行检查。
+- DISPLAY 实跑使用临时调试入口生成石器时代英雄并开战，确认战斗可进入失败结算；截图留存于 `/tmp/deck_and_merge_era_battle.png`。
