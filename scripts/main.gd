@@ -37,6 +37,8 @@ var enemy_tower_label: Label
 var battle_active := false
 var battle_ended := false
 var wave_timer := 0.0
+var pending_era_cards: Array[String] = []
+var era_card_timer := 0.0
 var ally_tower_hp := 1.0
 var enemy_tower_hp := 1.0
 var rng := RandomNumberGenerator.new()
@@ -53,6 +55,12 @@ func _ready() -> void:
 	_start_round()
 
 func _process(delta: float) -> void:
+	if not pending_era_cards.is_empty():
+		era_card_timer -= delta
+		if era_card_timer <= 0.0:
+			_spawn_card(pending_era_cards.pop_front(), deck_cards.size(), true)
+			era_card_timer = 0.32
+			_refresh_covered()
 	if not battle_active or battle_ended:
 		return
 	wave_timer -= delta
@@ -231,6 +239,8 @@ func _start_round() -> void:
 	battle_active = false
 	battle_ended = false
 	wave_timer = 0.0
+	pending_era_cards.clear()
+	era_card_timer = 0.0
 	ally_tower_hp = GameData.tower_hp(current_era)
 	enemy_tower_hp = GameData.tower_hp(current_era)
 	battle_button.disabled = false
@@ -520,13 +530,11 @@ func _check_era_upgrade() -> void:
 	print("时代进阶: %s" % current_era)
 
 func _add_new_era_cards() -> void:
-	var new_cards := GameData.cards_for_era(current_era)
-	var start := deck_cards.size()
-	for card_id in new_cards:
+	pending_era_cards.clear()
+	for card_id in GameData.cards_for_era(current_era):
 		for _count in range(3):
-			_spawn_card(card_id, start, true)
-			start += 1
-	_refresh_covered()
+			pending_era_cards.append(card_id)
+	era_card_timer = 0.0
 
 func _spawn_hit_fx(local_position: Vector2, color: Color, text: String) -> void:
 	var fx := Label.new()
