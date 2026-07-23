@@ -10,8 +10,14 @@ var max_hp := 1.0
 var hp := 1.0
 var attack_cooldown := 0.0
 var alive := true
-var sprite: Sprite2D
 var flash_time := 0.0
+
+var visual: CanvasItem          # sprite OR anim, used for flash/modulate
+var sprite: Sprite2D            # static fallback
+var anim: AnimatedSprite2D      # frame animation
+var animated := false
+var _attacking := false
+var _moving := false
 
 func setup(id: String, side: String, data: Dictionary, texture: Texture2D) -> void:
 	unit_id = id
@@ -19,20 +25,85 @@ func setup(id: String, side: String, data: Dictionary, texture: Texture2D) -> vo
 	stats = data
 	max_hp = float(data.hp)
 	hp = max_hp
+	var desired_height := 104.0 if side == "ally" else 92.0
+	if _setup_animated(id, side, desired_height):
+		animated = true
+	else:
+		_setup_static(side, desired_height, texture)
+	queue_redraw()
+
+func _setup_animated(id: String, side: String, desired_height: float) -> bool:
+	var dir := "res://assets/anim/%s" % id
+	var meta_path := "%s/meta.json" % dir
+	if not ResourceLoader.exists("%s/idle.png" % dir) or not FileAccess.file_exists(meta_path):
+		return false
+	var meta: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(meta_path))
+	if meta == null:
+		return false
+	var frames := SpriteFrames.new()
+	frames.remove_animation("default")
+	_add_anim(frames, dir, "idle", ["idle"], 4.0, true)
+	_add_anim(frames, dir, "walk", ["walk_a", "walk_b"], 7.0, true)
+	_add_anim(frames, dir, "attack", ["atk_a", "atk_b"], 11.0, false)
+	_add_anim(frames, dir, "die", ["die"], 1.0, false)
+	anim = AnimatedSprite2D.new()
+	anim.sprite_frames = frames
+	anim.centered = false
+	var anchor: Array = meta.get("anchor", [0, 0])
+	anim.offset = Vector2(-float(anchor[0]), -float(anchor[1]))
+	var char_height := float(meta.get("char_height", desired_height))
+	var factor := desired_height / maxf(1.0, char_height)
+	anim.scale = Vector2(-factor if side == "enemy" else factor, factor)
+	anim.animation_finished.connect(_on_anim_finished)
+	add_child(anim)
+	visual = anim
+	anim.play("idle")
+	return true
+
+func _add_anim(frames: SpriteFrames, dir: String, name: String, files: Array, fps: float, loop: bool) -> void:
+	frames.add_animation(name)
+	frames.set_animation_speed(name, fps)
+	frames.set_animation_loop(name, loop)
+	for file in files:
+		var tex: Texture2D = load("%s/%s.png" % [dir, file])
+		if tex != null:
+			frames.add_frame(name, tex)
+
+func _setup_static(side: String, desired_height: float, texture: Texture2D) -> void:
 	sprite = Sprite2D.new()
 	sprite.texture = texture
 	sprite.flip_h = side == "enemy"
-	var desired_height := 104.0 if side == "ally" else 92.0
 	var factor: float = desired_height / maxf(1.0, float(texture.get_height()))
 	sprite.scale = Vector2(factor, factor)
 	sprite.position.y = -desired_height * 0.5
 	add_child(sprite)
-	queue_redraw()
+	visual = sprite
+
+func set_moving(moving: bool) -> void:
+	if not animated or not alive or _attacking:
+		return
+	if moving == _moving:
+		return
+	_moving = moving
+	anim.play("walk" if moving else "idle")
+
+func play_attack() -> void:
+	if not animated or not alive:
+		return
+	_attacking = true
+	anim.play("attack")
+
+func _on_anim_finished() -> void:
+	if not alive:
+		return
+	if anim.animation == "attack":
+		_attacking = false
+		anim.play("walk" if _moving else "idle")
 
 func _process(delta: float) -> void:
-	if flash_time > 0.0:
+	if flash_time > 0.0 and is_instance_valid(visual):
 		flash_time -= delta
-		sprite.modulate = Color(1.0, 0.7, 0.5) if flash_time > 0.0 else Color.WHITE
+		visual.modulate = Color(1.0, 0.7, 0.5) if flash_time > 0.0 else Color.WHITE
 
 func receive_damage(amount: float) -> void:
 	if not alive:
@@ -41,7 +112,17 @@ func receive_damage(amount: float) -> void:
 	flash_time = 0.12
 	queue_redraw()
 	if hp <= 0.0:
-		alive = false
+		_die()
+
+func _die() -> void:
+	alive = false
+	if animated:
+		anim.play("die")
+		var tween := create_tween()
+		tween.tween_interval(0.45)
+		tween.tween_property(visual, "modulate:a", 0.0, 0.4)
+		tween.tween_callback(func() -> void: expired.emit(self))
+	else:
 		var tween := create_tween()
 		tween.set_parallel(true)
 		tween.tween_property(self, "modulate", Color(1, 1, 1, 0), 0.38)

@@ -351,6 +351,39 @@ func _has_triple() -> bool:
 			return true
 	return false
 
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_9:
+		for i in range(3):
+			_spawn_ally("clubber")
+		_start_battle()
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_6:
+		for uid in ["clubber", "shield", "spearman", "slinger", "shaman", "healer"]:
+			_spawn_ally(uid)
+		_start_battle()
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_7:
+		var dead := BattleUnit.new()
+		dead.setup("clubber", "ally", GameData.ALLIES["clubber"], load("res://assets/units/clubber.png"))
+		dead.position = Vector2(300, BATTLE_GROUND_Y)
+		dead.z_index = 4
+		battlefield.add_child(dead)
+		dead.receive_damage(99999.0)
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_8:
+		var ally := BattleUnit.new()
+		ally.setup("clubber", "ally", GameData.ALLIES["clubber"], load("res://assets/units/clubber.png"))
+		ally.position = Vector2(180, BATTLE_GROUND_Y)
+		ally.z_index = 4
+		battlefield.add_child(ally)
+		battle_units.append(ally)
+		var foe := BattleUnit.new()
+		foe.setup("clubber", "enemy", GameData.ALLIES["clubber"], load("res://assets/units/clubber.png"))
+		foe.position = Vector2(470, BATTLE_GROUND_Y)
+		foe.z_index = 4
+		battlefield.add_child(foe)
+		battle_units.append(foe)
+		battle_active = true
+		battle_ended = false
+		battle_button.disabled = true
+
 func _spawn_ally(unit_id: String) -> void:
 	var unit := BattleUnit.new()
 	unit.setup(unit_id, "ally", GameData.ALLIES[unit_id], load("res://assets/units/%s.png" % unit_id))
@@ -392,14 +425,18 @@ func _step_battle(delta: float) -> void:
 		unit.attack_cooldown = max(0.0, unit.attack_cooldown - delta)
 		var target := _find_target(unit)
 		if target == null:
+			unit.set_moving(false)
 			continue
 		var distance: float = absf(target.position.x - unit.position.x)
 		var attack_range := float(unit.stats.range)
 		if distance > attack_range:
 			var direction := 1.0 if unit.faction == "ally" else -1.0
 			unit.position.x += direction * float(unit.stats.move_speed) * delta
-		elif unit.attack_cooldown <= 0.0:
-			_attack(unit, target)
+			unit.set_moving(true)
+		else:
+			unit.set_moving(false)
+			if unit.attack_cooldown <= 0.0:
+				_attack(unit, target)
 	if _living_units("enemy").any(func(enemy: BattleUnit) -> bool: return enemy.position.x <= BASE_LINE_X):
 		_finish_battle(false, "失败！敌人突破了基地线")
 	elif _living_units("enemy").is_empty():
@@ -429,6 +466,7 @@ func _find_target(unit: BattleUnit) -> BattleUnit:
 
 func _attack(attacker: BattleUnit, target: BattleUnit) -> void:
 	attacker.spend_attack_time()
+	attacker.play_attack()
 	if attacker.stats.role == "healer":
 		target.heal(22.0)
 		_spawn_hit_fx(target.position, Color("#93e58b"), "✚")

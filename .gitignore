@@ -1,1 +1,4 @@
 .godot/
+anim_src/
+__pycache__/
+*.pyc
