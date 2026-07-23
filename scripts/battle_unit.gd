@@ -18,6 +18,7 @@ var anim: AnimatedSprite2D      # frame animation
 var animated := false
 var _attacking := false
 var _moving := false
+var score_awarded := false
 
 func setup(id: String, side: String, data: Dictionary, texture: Texture2D) -> void:
 	unit_id = id
@@ -25,8 +26,9 @@ func setup(id: String, side: String, data: Dictionary, texture: Texture2D) -> vo
 	stats = data
 	max_hp = float(data.hp)
 	hp = max_hp
-	var desired_height := 104.0 if side == "ally" else 92.0
-	if _setup_animated(id, side, desired_height):
+	var role_scale := float(data.get("scale", 1.0))
+	var desired_height := (104.0 if side == "ally" else 92.0) * role_scale
+	if _setup_animated(str(data.get("anim", id)), side, desired_height):
 		animated = true
 	else:
 		_setup_static(side, desired_height, texture)
@@ -70,6 +72,28 @@ func _add_anim(frames: SpriteFrames, dir: String, name: String, files: Array, fp
 			frames.add_frame(name, tex)
 
 func _setup_static(side: String, desired_height: float, texture: Texture2D) -> void:
+	if texture == null:
+		var placeholder := Polygon2D.new()
+		placeholder.polygon = PackedVector2Array([
+			Vector2(-30, -desired_height),
+			Vector2(30, -desired_height),
+			Vector2(30, 0),
+			Vector2(-30, 0),
+		])
+		placeholder.color = stats.get("color_value", Color("#777777"))
+		placeholder.scale.x = -1.0 if side == "enemy" else 1.0
+		add_child(placeholder)
+		var label := Label.new()
+		label.position = Vector2(-58, -desired_height - 24)
+		label.size = Vector2(116, 24)
+		label.text = str(stats.get("name", unit_id))
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 13)
+		label.add_theme_color_override("font_color", Color("#fff0c7"))
+		add_child(label)
+		visual = placeholder
+		sprite = null
+		return
 	sprite = Sprite2D.new()
 	sprite.texture = texture
 	sprite.flip_h = side == "enemy"

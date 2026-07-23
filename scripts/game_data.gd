@@ -1,33 +1,147 @@
 class_name GameData
 extends RefCounted
 
-const CARDS := {
-	"stone_axe": {"name": "石斧", "unit": "clubber", "color": Color("#c86f3e")},
-	"club": {"name": "木棒", "unit": "clubber", "color": Color("#b87845")},
-	"spear": {"name": "长矛", "unit": "spearman", "color": Color("#d1964a")},
-	"sling": {"name": "投石", "unit": "slinger", "color": Color("#6c9c88")},
-	"bone": {"name": "兽骨", "unit": "shaman", "color": Color("#c9b98a")},
-	"campfire": {"name": "篝火", "unit": "healer", "color": Color("#db8140")},
-	"gold": {"name": "金块", "unit": "healer", "color": Color("#edba42")},
-	"pelt": {"name": "兽皮", "unit": "shield", "color": Color("#9b664a")},
+const MANIFEST_PATH := "res://data/heroes.json"
+const TOWER_BASE_HP := 1800.0
+const LEGACY_CARD_TEXTURES := {
+	"兽皮": "pelt",
+	"木棒": "club",
+	"投石": "sling",
+	"兽骨": "bone",
+	"石斧": "stone_axe",
+	"长矛": "spear",
+	"篝火": "campfire",
+	"金块": "gold",
 }
 
-const STARTER_TYPES := ["stone_axe", "club", "spear", "sling", "bone"]
+static var _manifest: Dictionary = {}
+static var _initialized := false
+static var ERAS: Array[String] = []
+static var ERA_NAMES: Dictionary = {}
+static var ERA_MULT: Dictionary = {}
+static var ERA_UPGRADE_SCORE: Dictionary = {}
+static var ROLES: Array[String] = []
+static var ROLE_NAMES: Dictionary = {}
+static var ROLE_BASE: Dictionary = {}
+static var ROLE_SCALE: Dictionary = {}
+static var HEROES: Dictionary = {}
+static var HEROES_BY_ERA: Dictionary = {}
+static var CARDS: Dictionary = {}
 
-const ALLIES := {
-	"clubber": {"name": "棒兵", "hp": 125.0, "attack": 20.0, "attack_speed": 1.05, "range": 48.0, "move_speed": 46.0, "role": "melee"},
-	"shield": {"name": "盾兵", "hp": 220.0, "attack": 12.0, "attack_speed": 0.82, "range": 46.0, "move_speed": 30.0, "role": "melee"},
-	"spearman": {"name": "矛兵", "hp": 105.0, "attack": 24.0, "attack_speed": 0.95, "range": 165.0, "move_speed": 39.0, "role": "ranged"},
-	"slinger": {"name": "投石手", "hp": 92.0, "attack": 28.0, "attack_speed": 0.76, "range": 210.0, "move_speed": 34.0, "role": "ranged"},
-	"shaman": {"name": "骨法师", "hp": 88.0, "attack": 35.0, "attack_speed": 0.68, "range": 185.0, "move_speed": 29.0, "role": "ranged"},
-	"healer": {"name": "草药萨满", "hp": 105.0, "attack": 9.0, "attack_speed": 0.85, "range": 160.0, "move_speed": 31.0, "role": "healer"},
-}
+static func initialize() -> void:
+	if _initialized:
+		return
+	_manifest = _load_manifest()
+	ERAS = _string_array(_manifest.get("eras", []))
+	ERA_NAMES = _manifest.get("era_names", {})
+	ERA_MULT = _manifest.get("era_mult", {})
+	ERA_UPGRADE_SCORE = _manifest.get("era_upgrade_score", {})
+	ROLES = _string_array(_manifest.get("roles", []))
+	ROLE_NAMES = _manifest.get("role_names", {})
+	ROLE_BASE = _manifest.get("role_base", {})
+	ROLE_SCALE = _manifest.get("role_scale", {})
+	HEROES = _build_heroes(_manifest.get("heroes", []))
+	HEROES_BY_ERA = _build_heroes_by_era(HEROES)
+	CARDS = _build_cards(HEROES)
+	_initialized = true
 
-const ENEMIES := {
-	"sabertooth": {"name": "剑齿虎", "hp": 150.0, "attack": 24.0, "attack_speed": 1.0, "range": 48.0, "move_speed": 42.0, "role": "melee"},
-	"mammoth": {"name": "猛犸", "hp": 285.0, "attack": 18.0, "attack_speed": 0.72, "range": 52.0, "move_speed": 23.0, "role": "melee"},
-	"bear": {"name": "洞熊", "hp": 205.0, "attack": 27.0, "attack_speed": 0.8, "range": 48.0, "move_speed": 28.0, "role": "melee"},
-	"raptor": {"name": "迅猛龙", "hp": 105.0, "attack": 19.0, "attack_speed": 1.25, "range": 45.0, "move_speed": 58.0, "role": "melee"},
-	"boar": {"name": "野猪", "hp": 130.0, "attack": 16.0, "attack_speed": 1.15, "range": 46.0, "move_speed": 48.0, "role": "melee"},
-	"enemy_caveman": {"name": "敌方原始人", "hp": 140.0, "attack": 21.0, "attack_speed": 0.9, "range": 150.0, "move_speed": 34.0, "role": "ranged"},
-}
+static func _load_manifest() -> Dictionary:
+	if not FileAccess.file_exists(MANIFEST_PATH):
+		push_error("找不到英雄 manifest: %s" % MANIFEST_PATH)
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(MANIFEST_PATH))
+	if parsed is Dictionary:
+		return parsed
+	push_error("英雄 manifest 不是有效 JSON")
+	return {}
+
+static func _string_array(value: Variant) -> Array[String]:
+	var result: Array[String] = []
+	for item in value:
+		result.append(str(item))
+	return result
+
+static func _build_heroes(raw_heroes: Variant) -> Dictionary:
+	var result: Dictionary = {}
+	for raw in raw_heroes:
+		if not raw is Dictionary:
+			continue
+		var role := str(raw.get("role", "warrior"))
+		var era := str(raw.get("era", "stone"))
+		var base: Dictionary = ROLE_BASE.get(role, {})
+		var mult := float(ERA_MULT.get(era, 1.0))
+		var hero: Dictionary = raw.duplicate(true)
+		hero["role"] = role
+		hero["era"] = era
+		hero["color_value"] = Color(str(raw.get("color", "#888888")))
+		hero["scale"] = float(ROLE_SCALE.get(role, 1.0))
+		hero["hp"] = float(base.get("hp", 100.0)) * mult
+		hero["attack"] = float(base.get("attack", 10.0)) * mult
+		hero["range"] = float(base.get("range", 46.0))
+		hero["move_speed"] = float(base.get("move_speed", 40.0))
+		hero["cooldown"] = float(base.get("cooldown", 1.0))
+		hero["attack_speed"] = 1.0 / maxf(0.1, hero["cooldown"])
+		hero["kill_score"] = int(base.get("kill_score", 10))
+		hero["role_name"] = str(ROLE_NAMES.get(role, role))
+		hero["era_name"] = str(ERA_NAMES.get(era, era))
+		result[str(raw.get("id", ""))] = hero
+	return result
+
+static func _build_heroes_by_era(heroes: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for era in ERAS:
+		result[era] = []
+	for hero_id in heroes:
+		var hero: Dictionary = heroes[hero_id]
+		var era := str(hero.get("era", "stone"))
+		if not result.has(era):
+			result[era] = []
+		result[era].append(hero_id)
+	return result
+
+static func _build_cards(heroes: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	for hero_id in heroes:
+		var hero: Dictionary = heroes[hero_id]
+		var card_id := str(hero.get("card", hero_id))
+		result[card_id] = {
+			"name": card_id,
+			"hero": hero_id,
+			"unit": hero_id,
+			"era": hero.get("era", "stone"),
+			"color": hero.get("color_value", Color("#888888")),
+		}
+	return result
+
+static func heroes_for_era(era: String) -> Array[String]:
+	var result: Array[String] = []
+	for hero_id in HEROES_BY_ERA.get(era, []):
+		result.append(str(hero_id))
+	return result
+
+static func cards_for_era(era: String) -> Array[String]:
+	var result: Array[String] = []
+	for hero_id in heroes_for_era(era):
+		result.append(str(HEROES[hero_id].get("card", hero_id)))
+	return result
+
+static func hero_for_card(card_id: String) -> Dictionary:
+	var card: Dictionary = CARDS.get(card_id, {})
+	return HEROES.get(card.get("hero", ""), {})
+
+static func card_texture_path(card_id: String) -> String:
+	var legacy_id: String = LEGACY_CARD_TEXTURES.get(card_id, "")
+	if legacy_id != "":
+		return "res://assets/cards/%s.png" % legacy_id
+	return ""
+
+static func hero_texture_path(hero_id: String) -> String:
+	var hero: Dictionary = HEROES.get(hero_id, {})
+	var anim_id := str(hero.get("anim", ""))
+	var static_path := "res://assets/units/%s.png" % anim_id
+	if ResourceLoader.exists(static_path):
+		return static_path
+	return ""
+
+static func tower_hp(era: String) -> float:
+	return TOWER_BASE_HP * float(ERA_MULT.get(era, 1.0))

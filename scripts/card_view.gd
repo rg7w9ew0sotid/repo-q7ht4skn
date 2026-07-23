@@ -49,6 +49,18 @@ func setup(id: String, texture: Texture2D, tint: Color) -> void:
 	card_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	card_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(card_texture)
+	if texture == null:
+		var placeholder := Panel.new()
+		placeholder.position = Vector2(14, 14)
+		placeholder.size = Vector2(110, 108)
+		var placeholder_style := StyleBoxFlat.new()
+		placeholder_style.bg_color = tint
+		placeholder_style.border_color = Color("#784b31")
+		placeholder_style.set_border_width_all(2)
+		placeholder_style.set_corner_radius_all(12)
+		placeholder.add_theme_stylebox_override("panel", placeholder_style)
+		placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(placeholder)
 
 	var name_label := Label.new()
 	name_label.position = Vector2(5, 130)
